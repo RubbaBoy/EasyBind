@@ -1,0 +1,62 @@
+plugins {
+    id 'java'
+    id 'maven'
+    id 'maven-publish'
+    id 'java-gradle-plugin'
+    id "com.jfrog.artifactory" version "4.7.5"
+}
+
+group 'com.uddernetworks.easybind'
+version '1.0-SNAPSHOT'
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+
+    compile group: 'fr.inria.gforge.spoon', name: 'spoon-core', version: '6.2.0'
+    compile 'org.mdkt.compiler:InMemoryJavaCompiler:1.3.0'
+}
+
+artifactory {
+    contextUrl = "${artifactory_contextUrl}"
+    publish {
+        repository {
+            repoKey = 'gradle-dev'
+            username = "${artifactory_user}"
+            password = "${artifactory_password}"
+            maven = true
+        }
+
+        defaults {
+            publications ('mavenJava')
+        }
+    }
+}
+
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourcesJar
+            artifact javadocJar
+        }
+    }
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allJava
+}
+
+task javadocJar(type: Jar) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
