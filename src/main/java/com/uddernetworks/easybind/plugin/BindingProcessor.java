@@ -1,11 +1,13 @@
 package com.uddernetworks.easybind.plugin;
 
 import com.uddernetworks.easybind.depend.FXProperty;
-import javafx.beans.property.*;
+import javafx.beans.property.ObjectProperty;
 import spoon.processing.AbstractProcessor;
 import spoon.reflect.declaration.*;
 import spoon.reflect.factory.CodeFactory;
 import spoon.reflect.factory.CoreFactory;
+import spoon.reflect.reference.CtPackageReference;
+import spoon.reflect.reference.CtTypeReference;
 
 import java.util.Arrays;
 import java.util.List;
@@ -14,17 +16,16 @@ import java.util.Set;
 
 public class BindingProcessor extends AbstractProcessor<CtField> {
 
-    private List<Class> propertableClasses = Arrays.asList(Boolean.class, Double.class, Float.class, Integer.class, List.class, Long.class, Map.class, Object.class, Set.class, String.class);
-    private List<Class> propertyClasses = Arrays.asList(BooleanProperty.class, DoubleProperty.class, FloatProperty.class, IntegerProperty.class, ListProperty.class, LongProperty.class, MapProperty.class, ObjectProperty.class, SetProperty.class, StringProperty.class);
+    private List<CtTypeReference> propertableClasses;
 
     @Override
-    public void process(CtField element) { // TODO: Implement real processor
+    public void process(CtField element) {
         try {
             if (!element.hasAnnotation(FXProperty.class)) return;
             FXProperty fxProperty = element.getAnnotation(FXProperty.class);
             CtClass parent = element.getParent(CtClass.class);
 
-            Class type = element.getType().getActualClass();
+            CtType type = element.getType().getTypeDeclaration();
 
             String name = element.getSimpleName();
             String gsName = generateGSName(name);
@@ -32,46 +33,47 @@ public class BindingProcessor extends AbstractProcessor<CtField> {
             CoreFactory core = getFactory().Core();
             CodeFactory code = getFactory().Code();
 
-            if (propertableClasses.contains(type)) {
-                Class property = Class.forName("javafx.beans.property." + type.getSimpleName() + "Property");
+            if (this.propertableClasses == null) this.propertableClasses = Arrays.asList(code.createCtTypeReference(Boolean.class), code.createCtTypeReference(Double.class), code.createCtTypeReference(Float.class), code.createCtTypeReference(Integer.class), code.createCtTypeReference(List.class), code.createCtTypeReference(Long.class), code.createCtTypeReference(Map.class), code.createCtTypeReference(Object.class), code.createCtTypeReference(Set.class), code.createCtTypeReference(String.class));
 
-                System.out.println("Binding to a normal field: " + type.getCanonicalName());
+            CtPackageReference propertyPackage = code.createCtPackageReference(ObjectProperty.class.getPackage());
 
+            if (!type.getPackage().getReference().equals(propertyPackage)) { // If the value is NOT a property
+                boolean isObject = !this.propertableClasses.contains(type.getReference());
+                String className = isObject ? "javafx.beans.property.ObjectProperty" : "javafx.beans.property." + type.getSimpleName() + "Property";
+
+                Class property = Class.forName(className);
 
                 String propertyName = generatePropertyName(name);
                 int index = getUncollidingIndex(parent, element, name, 0);
-                System.out.println("Colliding index: " + index);
 
                 if (index > 0) {
                     propertyName += index;
                     gsName += index;
                 }
 
+                CtTypeReference ref = code.createCtTypeReference(property);
+                if (isObject) ref.addActualTypeArgument(type.getReference());
 
                 // Generating field like:   StringProperty setting = new SimpleStringProperty();
                 CtField genField = core.createField();
-                genField.setType(code.createCtTypeReference(property));
+                genField.setType(ref);
                 genField.addModifier(ModifierKind.PUBLIC);
                 genField.setSimpleName(propertyName);
-                genField.setDefaultExpression(code.createCodeSnippetExpression("new javafx.beans.property.Simple" + type.getSimpleName() + "Property()"));
+                genField.setDefaultExpression(code.createCodeSnippetExpression(isObject ? "new javafx.beans.property.SimpleObjectProperty<>()" : "new javafx.beans.property.Simple" + type.getSimpleName() + "Property()"));
 
                 parent.addField(genField);
 
-                generateGetterAndSetter(parent, gsName, type, propertyName, fxProperty);
-            } else if (propertyClasses.contains(type)) {
-                String prefixing = type.equals(List.class) || type.equals(Map.class) || type.equals(Set.class) ? "java.util." : "java.lang.";
-                Class originalClass = Class.forName(prefixing + type.getSimpleName().replace("Property", ""));
-                System.out.println("Binding to a property: " + type.getCanonicalName());
-                System.out.println("Original calculated class: " + originalClass.getCanonicalName());
-
-
-                generateGetterAndSetter(parent, gsName, originalClass, name, fxProperty);
-            } else {
-                try {
-                    throw new Exception("Invalid class with @FXProperty binding: " + type.getCanonicalName());
-                } catch (Exception e) {
-                    e.printStackTrace();
+                generateGetterAndSetter(parent, gsName, type.getReference(), propertyName, fxProperty);
+            } else { // If this IS a property
+                List<CtTypeReference<?>> actualTypeArguments = element.getType().getActualTypeArguments();
+                if (actualTypeArguments.size() == 0) {
+                    System.err.println("Don't know what to do with no types defined for field " + name);
+                    return;
                 }
+
+                CtTypeReference<?> actualType = actualTypeArguments.get(0);
+
+                generateGetterAndSetter(parent, gsName, actualType, name, fxProperty);
             }
 
         } catch (ClassNotFoundException e) {
@@ -79,13 +81,13 @@ public class BindingProcessor extends AbstractProcessor<CtField> {
         }
     }
 
-    private void generateGetterAndSetter(CtClass parent, String gsName, Class originalClass, String name, FXProperty fxProperty) {
+    private void generateGetterAndSetter(CtClass parent, String gsName, CtTypeReference originalClass, String name, FXProperty fxProperty) {
         CoreFactory core = getFactory().Core();
         CodeFactory code = getFactory().Code();
 
         // Generating getter like:   public String getSetting() { return this.setting.get(); }
         CtMethod getter = core.createMethod();
-        getter.setType(code.createCtTypeReference(originalClass));
+        getter.setType(originalClass);
         getter.addModifier(ModifierKind.PUBLIC);
         getter.setSimpleName("get" + gsName);
         getter.setBody(code.createCodeSnippetStatement("return this." + name + ".get()"));
@@ -94,7 +96,7 @@ public class BindingProcessor extends AbstractProcessor<CtField> {
 
         CtParameter parameter = core.createParameter();
         parameter.setSimpleName("value");
-        parameter.setType(code.createCtTypeReference(originalClass));
+        parameter.setType(originalClass);
 
         CtMethod setter = core.createMethod();
         setter.setType(getFactory().Class().VOID_PRIMITIVE);
