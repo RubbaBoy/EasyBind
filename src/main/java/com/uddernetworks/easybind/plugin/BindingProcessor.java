@@ -21,6 +21,7 @@ public class BindingProcessor extends AbstractProcessor<CtField> {
     public void process(CtField element) { // TODO: Implement real processor
         try {
             if (!element.hasAnnotation(FXProperty.class)) return;
+            FXProperty fxProperty = element.getAnnotation(FXProperty.class);
             CtClass parent = element.getParent(CtClass.class);
 
             Class type = element.getType().getActualClass();
@@ -56,7 +57,7 @@ public class BindingProcessor extends AbstractProcessor<CtField> {
 
                 parent.addField(genField);
 
-                generateGetterAndSetter(parent, gsName, type, propertyName);
+                generateGetterAndSetter(parent, gsName, type, propertyName, fxProperty);
             } else if (propertyClasses.contains(type)) {
                 String prefixing = type.equals(List.class) || type.equals(Map.class) || type.equals(Set.class) ? "java.util." : "java.lang.";
                 Class originalClass = Class.forName(prefixing + type.getSimpleName().replace("Property", ""));
@@ -64,7 +65,7 @@ public class BindingProcessor extends AbstractProcessor<CtField> {
                 System.out.println("Original calculated class: " + originalClass.getCanonicalName());
 
 
-                generateGetterAndSetter(parent, gsName, originalClass, name);
+                generateGetterAndSetter(parent, gsName, originalClass, name, fxProperty);
             } else {
                 try {
                     throw new Exception("Invalid class with @FXProperty binding: " + type.getCanonicalName());
@@ -78,7 +79,7 @@ public class BindingProcessor extends AbstractProcessor<CtField> {
         }
     }
 
-    private void generateGetterAndSetter(CtClass parent, String gsName, Class originalClass, String name) {
+    private void generateGetterAndSetter(CtClass parent, String gsName, Class originalClass, String name, FXProperty fxProperty) {
         CoreFactory core = getFactory().Core();
         CodeFactory code = getFactory().Code();
 
@@ -100,7 +101,17 @@ public class BindingProcessor extends AbstractProcessor<CtField> {
         setter.addParameter(parameter);
         setter.addModifier(ModifierKind.PUBLIC);
         setter.setSimpleName("set" + gsName);
-        setter.setBody(code.createCodeSnippetStatement("this." + name + ".set(value)"));
+        String body = "this." + name + ".set(value)";
+
+        if (!fxProperty.onSetMethod().equals("")) {
+            body += ";\n" + fxProperty.onSetMethod() + "(value)";
+        }
+
+        if (!fxProperty.onSetCode().equals("")) {
+            body += ";\n" + fxProperty.onSetCode();
+        }
+
+        setter.setBody(code.createCodeSnippetStatement(body));
 
         parent.addMethod(getter);
         parent.addMethod(setter);

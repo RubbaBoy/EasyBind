@@ -8,4 +8,6 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.SOURCE)
 @Target(ElementType.FIELD)
 public @interface FXProperty {
+    String onSetMethod() default "";
+    String onSetCode() default "";
 }
