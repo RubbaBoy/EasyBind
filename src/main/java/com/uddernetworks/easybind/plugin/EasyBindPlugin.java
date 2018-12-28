@@ -1,4 +1,4 @@
-package com.uddernetworks.easybind;
+package com.uddernetworks.easybind.plugin;
 
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;

@@ -1,4 +1,4 @@
-package com.uddernetworks.easybind;
+package com.uddernetworks.easybind.plugin;
 
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Task;
@@ -22,8 +22,9 @@ public class EasyBind extends DefaultTask {
         final String[] args = {
                 "-i", "src/main/java/",
                 "-o", this.generatedSource.getAbsolutePath(),
-                "-p", "com.uddernetworks.easybind.BindingProcessor",
-                "--noclasspath"
+                "-p", "com.uddernetworks.easybind.plugin.BindingProcessor",
+                "--noclasspath",
+                "--with-imports"
         };
 
         final Launcher launcher = new Launcher();
