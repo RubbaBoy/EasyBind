@@ -1,3 +1,5 @@
+**Notice: This project is basically useless at its original task, as I didn't test anything with IDEs missing properties. This project may come in use for people trying to use Spoon with a Gradle plugin, so I'll leave it here.**
+
 # EasyBind
 EasyBind is a gradle plugin that generates the proper getter and setters for JavaFX custom Node properties. This reduces clutter in your code, and removes boilerplate. The code is generated during compile-time, running a task before Gradle's `build` task automatically.
 
